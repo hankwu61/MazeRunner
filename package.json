@@ -1,0 +1,1 @@
+{"name":"neon-pacman","private":true,"type":"module","scripts":{"dev":"node server.mjs","test":"node --test test/game.test.mjs"},"dependencies":{"three":"0.180.0"}}

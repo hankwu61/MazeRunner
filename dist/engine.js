@@ -1,0 +1,43 @@
+export const MAP = [
+'#####################',
+'#o........#........o#',
+'#.###.###.#.###.###.#',
+'#...................#',
+'#.###.#.#####.#.###.#',
+'#.....#...#...#.....#',
+'#####.###.#.###.#####',
+'#...#.#.......#.#...#',
+'#.#.#.#.##.##.#.#.#.#',
+'#.#.....#   #.....#.#',
+'#.###.#.#   #.#.###.#',
+'#.....#.......#.....#',
+'#.###.#.#####.#.###.#',
+'#...#...........#...#',
+'###.#.###.#.###.#.###',
+'#.....#...#...#.....#',
+'#.#####.#####.#####.#',
+'#......... .........#',
+'#.###.###.#.###.###.#',
+'#o..#.....#.....#..o#',
+'###.#.#.#####.#.#.###',
+'#.....#.......#.....#',
+'#####################'];
+export const DIRS={left:{x:-1,y:0},right:{x:1,y:0},up:{x:0,y:-1},down:{x:0,y:1}};
+export const walkable=(x,y)=>Number.isInteger(x)&&Number.isInteger(y)&&!!MAP[y]?.[x]&&MAP[y][x]!=='#';
+const spawn=(x,y)=>({x,y,fromX:x,fromY:y,toX:x,toY:y,progress:0,moving:false,dir:'left'});
+export class Game{
+ constructor(){this.reset();}
+ reset(){this.score=0;this.lives=3;this.level=1;this.state='ready';this.power=0;this.chain=0;this.events=[];this.loadLevel();}
+ loadLevel(){this.pellets=new Map();MAP.forEach((r,y)=>[...r].forEach((c,x)=>{if(c==='.'||c==='o')this.pellets.set(`${x},${y}`,c);}));this.total=this.pellets.size;this.resetActors();}
+ resetActors(){this.player=spawn(10,17);this.next='left';this.ghosts=[spawn(9,9),spawn(11,9),spawn(9,10),spawn(11,10)];this.ghosts.forEach((g,i)=>{g.delay=1+i*.9;g.id=i;});this.power=0;this.invincible=2;}
+ start(){if(this.state==='ready'||this.state==='paused')this.state='playing';else if(this.state==='over'){this.reset();this.state='playing';}else if(this.state==='won'){this.level++;this.loadLevel();this.state='playing';}}
+ pause(){if(this.state==='playing')this.state='paused';else if(this.state==='paused')this.state='playing';}
+ input(dir){if(DIRS[dir])this.next=dir;}
+ choices(a){return Object.keys(DIRS).filter(k=>walkable(a.x+DIRS[k].x,a.y+DIRS[k].y));}
+ begin(a,dir){const d=DIRS[dir];if(!d||!walkable(a.x+d.x,a.y+d.y))return false;a.fromX=a.x;a.fromY=a.y;a.toX=a.x+d.x;a.toY=a.y+d.y;a.progress=0;a.moving=true;a.dir=dir;return true;}
+ position(a){return {x:a.moving?a.fromX+(a.toX-a.fromX)*a.progress:a.x,y:a.moving?a.fromY+(a.toY-a.fromY)*a.progress:a.y};}
+ move(a,dt,speed,choose,arrive){let budget=dt*speed;let limit=0;while(budget>0&&limit++<8){if(!a.moving&&!this.begin(a,choose()))break;const amount=Math.min(budget,1-a.progress);a.progress+=amount;budget-=amount;if(a.progress>=1-1e-9){a.x=a.toX;a.y=a.toY;a.moving=false;a.progress=0;arrive?.();if(this.state!=='playing')break;}}}
+ eat(){const key=`${this.player.x},${this.player.y}`,p=this.pellets.get(key);if(!p)return;this.pellets.delete(key);this.score+=p==='o'?50:10;this.events.push({type:'eat',key,power:p==='o'});if(p==='o'){this.power=7;this.chain=0;}if(!this.pellets.size){this.state='won';this.events.push({type:'win'});}}
+ ghostDirection(g){let options=this.choices(g);const reverse={left:'right',right:'left',up:'down',down:'up'}[g.dir];if(options.length>1)options=options.filter(k=>k!==reverse);const player=this.position(this.player);let target=player;if(g.id===1){const d=DIRS[this.player.dir];target={x:player.x+d.x*3,y:player.y+d.y*3};}if(g.id===2&&Math.random()<.35)return options[Math.floor(Math.random()*options.length)];if(g.id===3&&Math.hypot(g.x-player.x,g.y-player.y)<5)target={x:1,y:21};options.sort((a,b)=>{const distance=k=>Math.hypot(g.x+DIRS[k].x-target.x,g.y+DIRS[k].y-target.y);return (distance(a)-distance(b))*(this.power>0?-1:1);});return options[0];}
+ update(dt){if(this.state!=='playing')return;dt=Math.min(dt,.05);this.power=Math.max(0,this.power-dt);this.invincible=Math.max(0,this.invincible-dt);this.move(this.player,dt,5+Math.min(this.level-1,5)*.2,()=>this.choices(this.player).includes(this.next)?this.next:this.player.dir,()=>this.eat());if(this.state!=='playing')return;for(const g of this.ghosts){if(g.delay>0){g.delay-=dt;continue;}this.move(g,dt,(this.power>0?2.8:3.35+Math.min(this.level-1,8)*.22),()=>this.ghostDirection(g));const p=this.position(this.player),gp=this.position(g);if(Math.hypot(p.x-gp.x,p.y-gp.y)<.65){if(this.power>0){this.score+=200*2**Math.min(this.chain++,3);Object.assign(g,spawn(10,9),{delay:2});this.events.push({type:'ghost'});}else if(this.invincible<=0){this.lives--;this.events.push({type:'hit'});if(this.lives===0)this.state='over';else this.resetActors();break;}}}}
+}
